@@ -219,7 +219,7 @@
         function displayMangaInfo(manga) {
             const mangaInfo = document.getElementById('mangaInfo');
             const coverFile = manga.relationships.find(rel => rel.type === 'cover_art')?.attributes?.fileName;
-            const coverUrl = coverFile ? `https://uploads.mangadex.org/covers/${manga.id}/${coverFile}` : '';
+            const coverUrl = coverFile ? `https://proxyforall.onrender.com/proxy/image?url=${encodeURIComponent(`https://uploads.mangadex.org/covers/${manga.id}/${coverFile}`)}` : '';
             
             const authors = manga.relationships
                 .filter(rel => rel.type === 'author' || rel.type === 'artist')
