@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manga Info - MangaReader</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f4f4f4;
+        }
+
+        .container {
+            max-width: 768px;
+            margin: 0 auto;
+            padding: 15px;
+        }
+
+        header {
+            background-color: #333;
+            color: white;
+            padding: 1rem;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        header a {
+            color: white;
+            text-decoration: none;
+        }
+
+        .manga-info {
+            background-color: white;
+            border-radius: 8px;
+            padding: 2rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+
+        .manga-header {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+            align-items: center;
+        }
+
+        .manga-cover {
+            width: 240px;
+            height: 360px;
+            object-fit: cover;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        .manga-details {
+            flex: 1;
+        }
+
+        .manga-title {
+            font-size: 1.5rem;
+            margin-bottom: 0.8rem;
+            color: #333;
+            text-align: center;
+        }
+
+        .manga-description {
+            color: #666;
+            margin-bottom: 1rem;
+        }
+
+        .manga-metadata {
+            margin-bottom: 1rem;
+        }
+
+        .manga-metadata span {
+            background-color: #333;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            margin-right: 0.5rem;
+            display: inline-block;
+            margin-bottom: 0.5rem;
+        }
+
+        .chapters-list {
+            background-color: white;
+            border-radius: 8px;
+            padding: 2rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .chapter-item {
+            padding: 1.2rem 1rem;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .chapter-item:last-child {
+            border-bottom: none;
+        }
+
+        .chapter-item a {
+            color: #333;
+            text-decoration: none;
+        }
+
+        .chapter-item a:hover {
+            color: #666;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            font-size: 1.2rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1><a href="index.html">MangaReader</a></h1>
+    </header>
+
+    <div class="container">
+        <div id="mangaInfo" class="manga-info">
+            <!-- Manga info will be inserted here -->
+        </div>
+
+        <div class="chapters-list" id="chaptersList">
+            <!-- Chapters will be inserted here -->
+        </div>
+
+        <div id="loading" class="loading" style="display: none;">
+            Loading...
+        </div>
+    </div>
+
+    <script>
+        const PROXY_URL = 'https://proxyforall.onrender.com/proxy/json?url=';
+        const MANGADEX_API = 'https://api.mangadex.org';
+
+        async function fetchWithProxy(url) {
+            try {
+                const response = await fetch(PROXY_URL + encodeURIComponent(url));
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                return null;
+            }
+        }
+
+        async function loadMangaInfo() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const mangaId = urlParams.get('id');
+
+            if (!mangaId) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            const loading = document.getElementById('loading');
+            loading.style.display = 'block';
+
+            try {
+                const [mangaData, initialChaptersData] = await Promise.all([
+                    fetchWithProxy(`${MANGADEX_API}/manga/${mangaId}?includes[]=cover_art&includes[]=author&includes[]=artist`),
+                    fetchWithProxy(`${MANGADEX_API}/manga/${mangaId}/feed?translatedLanguage[]=en&order[chapter]=desc&limit=100&offset=0`)
+                ]);
+
+                if (mangaData && mangaData.data) {
+                    displayMangaInfo(mangaData.data);
+                }
+
+                if (initialChaptersData && initialChaptersData.data) {
+                    let allChapters = initialChaptersData.data;
+                    const total = initialChaptersData.total;
+                    const limit = 100;
+
+                    // Fetch remaining pages if there are more chapters
+                    if (total > limit) {
+                        const remainingPages = Math.ceil(total / limit) - 1;
+                        const remainingRequests = [];
+
+                        for (let offset = limit; offset < total; offset += limit) {
+                            remainingRequests.push(
+                                fetchWithProxy(`${MANGADEX_API}/manga/${mangaId}/feed?translatedLanguage[]=en&order[chapter]=desc&limit=${limit}&offset=${offset}`)
+                            );
+                        }
+
+                        const remainingResults = await Promise.all(remainingRequests);
+                        remainingResults.forEach(result => {
+                            if (result && result.data) {
+                                allChapters = allChapters.concat(result.data);
+                            }
+                        });
+                    }
+
+                    displayChapters(allChapters);
+                }
+            } catch (error) {
+                console.error('Error loading manga info:', error);
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        function displayMangaInfo(manga) {
+            const mangaInfo = document.getElementById('mangaInfo');
+            const coverFile = manga.relationships.find(rel => rel.type === 'cover_art')?.attributes?.fileName;
+            const coverUrl = coverFile ? `https://uploads.mangadex.org/covers/${manga.id}/${coverFile}` : '';
+            
+            const authors = manga.relationships
+                .filter(rel => rel.type === 'author' || rel.type === 'artist')
+                .map(rel => rel.attributes?.name)
+                .filter(name => name)
+                .join(', ');
+
+            mangaInfo.innerHTML = `
+                <div class="manga-header">
+                    <img src="${coverUrl}" alt="${manga.attributes.title.en}" class="manga-cover">
+                    <div class="manga-details">
+                        <h2 class="manga-title">${manga.attributes.title.en}</h2>
+                        <div class="manga-metadata">
+                            ${authors ? `<span>By ${authors}</span>` : ''}
+                            ${manga.attributes.status ? `<span>${manga.attributes.status}</span>` : ''}
+                            ${manga.attributes.year ? `<span>${manga.attributes.year}</span>` : ''}
+                        </div>
+                        <p class="manga-description">${manga.attributes.description?.en || 'No description available.'}</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayChapters(chapters) {
+            const chaptersList = document.getElementById('chaptersList');
+            
+            if (chapters.length === 0) {
+                chaptersList.innerHTML = '<p class="loading">No chapters available.</p>';
+                return;
+            }
+
+            const chapterItems = chapters.map(chapter => `
+                <div class="chapter-item">
+                    <a href="read.html?id=${chapter.id}">
+                        Chapter ${chapter.attributes.chapter}: ${chapter.attributes.title || 'No title'}
+                    </a>
+                    <span>${new Date(chapter.attributes.publishAt).toLocaleDateString()}</span>
+                </div>
+            `).join('');
+
+            chaptersList.innerHTML = chapterItems;
+        }
+
+        // Load manga info when page loads
+        document.addEventListener('DOMContentLoaded', loadMangaInfo);
+    </script>
+</body>
+</html>

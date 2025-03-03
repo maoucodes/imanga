@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MangaReader</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f4f4f4;
+        }
+
+        .container {
+            max-width: 768px;
+            margin: 0 auto;
+            padding: 15px;
+        }
+
+        header {
+            background-color: #333;
+            color: white;
+            padding: 1rem;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .search-bar {
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: center;
+        }
+
+        .search-bar input {
+            padding: 0.8rem;
+            width: 250px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-right: 0.8rem;
+            font-size: 16px;
+        }
+
+        .search-bar button {
+            padding: 0.8rem 1.2rem;
+            background-color: #333;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            min-width: 80px;
+        }
+
+        .manga-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .manga-card {
+            background-color: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .manga-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .manga-card img {
+            width: 100%;
+            height: 220px;
+            object-fit: cover;
+        }
+
+        .manga-info {
+            padding: 1rem;
+        }
+
+        .manga-title {
+            font-size: 0.95rem;
+            margin-bottom: 0.5rem;
+            color: #333;
+            line-height: 1.3;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            font-size: 1.2rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>MangaReader</h1>
+    </header>
+
+    <div class="container">
+        <div class="search-bar">
+            <input type="text" id="searchInput" placeholder="Search manga...">
+            <button onclick="searchManga()">Search</button>
+        </div>
+
+        <div class="manga-grid" id="mangaGrid">
+            <!-- Manga cards will be inserted here -->
+        </div>
+
+        <div id="loading" class="loading" style="display: none;">
+            Loading...
+        </div>
+    </div>
+
+    <script>
+        const PROXY_URL = 'https://proxyforall.onrender.com/proxy/json?url=';
+        const MANGADEX_API = 'https://api.mangadex.org';
+
+        async function fetchWithProxy(url) {
+            try {
+                const response = await fetch(PROXY_URL + encodeURIComponent(url));
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                return null;
+            }
+        }
+
+        async function loadMangaList() {
+            const loading = document.getElementById('loading');
+            const mangaGrid = document.getElementById('mangaGrid');
+            
+            loading.style.display = 'block';
+            mangaGrid.innerHTML = '';
+
+            try {
+                const data = await fetchWithProxy(`${MANGADEX_API}/manga?limit=20&includes[]=cover_art`);
+                if (data && data.data) {
+                    displayMangaList(data.data);
+                }
+            } catch (error) {
+                console.error('Error loading manga list:', error);
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        function displayMangaList(mangaList) {
+            const mangaGrid = document.getElementById('mangaGrid');
+            
+            mangaList.forEach(manga => {
+                const coverFile = manga.relationships.find(rel => rel.type === 'cover_art')?.attributes?.fileName;
+                const coverUrl = coverFile ? `https://uploads.mangadex.org/covers/${manga.id}/${coverFile}` : '';
+                
+                const card = document.createElement('div');
+                card.className = 'manga-card';
+                card.innerHTML = `
+                    <a href="info.html?id=${manga.id}">
+                        <img src="${coverUrl}" alt="${manga.attributes.title.en || 'Manga cover'}">
+                        <div class="manga-info">
+                            <h3 class="manga-title">${manga.attributes.title.en || 'Unknown Title'}</h3>
+                        </div>
+                    </a>
+                `;
+                mangaGrid.appendChild(card);
+            });
+        }
+
+        async function searchManga() {
+            const searchInput = document.getElementById('searchInput');
+            const query = searchInput.value.trim();
+            
+            if (!query) return;
+
+            const loading = document.getElementById('loading');
+            const mangaGrid = document.getElementById('mangaGrid');
+            
+            loading.style.display = 'block';
+            mangaGrid.innerHTML = '';
+
+            try {
+                const data = await fetchWithProxy(
+                    `${MANGADEX_API}/manga?title=${encodeURIComponent(query)}&includes[]=cover_art`
+                );
+                if (data && data.data) {
+                    displayMangaList(data.data);
+                }
+            } catch (error) {
+                console.error('Error searching manga:', error);
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        // Load initial manga list when page loads
+        document.addEventListener('DOMContentLoaded', loadMangaList);
+
+        // Add enter key support for search
+        document.getElementById('searchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                searchManga();
+            }
+        });
+    </script>
+</body>
+</html>

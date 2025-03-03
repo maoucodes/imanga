@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Read Chapter - MangaReader</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f4f4f4;
+        }
+
+        header {
+            background-color: #333;
+            color: white;
+            padding: 1rem;
+            text-align: center;
+            margin-bottom: 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .view-modes {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .mode-button {
+            padding: 0.5rem 1rem;
+            background-color: #444;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .mode-button.active {
+            background-color: #666;
+        }
+
+        header a {
+            color: white;
+            text-decoration: none;
+        }
+
+        .container {
+            max-width: 768px;
+            margin: 0 auto;
+            padding: 15px;
+        }
+
+        .chapter-title {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: #333;
+        }
+
+        .reader {
+            background-color: white;
+            border-radius: 8px;
+            padding: 1rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            touch-action: manipulation;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .page-container {
+            display: flex;
+            align-items: center;
+            min-height: 100vh;
+            transition: transform 0.3s ease;
+            touch-action: pan-x pan-y pinch-zoom;
+        }
+
+        .page-container {
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .page-container img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+            user-select: none;
+            -webkit-user-select: none;
+            width: 100%;
+            margin: 0;
+        }
+            width: 100%;
+            height: auto;
+            margin: 0;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            font-size: 1.2rem;
+            color: #666;
+        }
+
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 2rem;
+            padding: 1rem;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .navigation button {
+            padding: 0.8rem 1.2rem;
+            background-color: #333;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            min-width: 120px;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .navigation button:disabled {
+            background-color: #999;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1><a href="index.html">MangaReader</a></h1>
+
+    </header>
+
+    <div class="container">
+        <h2 id="chapterTitle" class="chapter-title">Loading chapter...</h2>
+
+        <div class="reader">
+            <div id="pageContainer" class="page-container">
+                <!-- Pages will be inserted here -->
+            </div>
+        </div>
+
+        <div class="navigation">
+            <button id="prevChapter" onclick="loadPreviousChapter()" disabled>Previous Chapter</button>
+            <button id="nextChapter" onclick="loadNextChapter()" disabled>Next Chapter</button>
+        </div>
+
+        <div id="loading" class="loading" style="display: none;">
+            Loading...
+        </div>
+    </div>
+
+    <script>
+        const PROXY_URL = 'https://proxyforall.onrender.com/proxy/json?url=';
+        const MANGADEX_API = 'https://api.mangadex.org';
+        let currentMangaId = '';
+        let currentChapter = null;
+        let chapterList = [];
+
+        async function fetchWithProxy(url) {
+            try {
+                const response = await fetch(PROXY_URL + encodeURIComponent(url));
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                return null;
+            }
+        }
+
+        async function loadChapter(chapterId) {
+            const loading = document.getElementById('loading');
+            const pageContainer = document.getElementById('pageContainer');
+            
+            loading.style.display = 'block';
+            pageContainer.innerHTML = '';
+
+            try {
+                const chapterData = await fetchWithProxy(`${MANGADEX_API}/chapter/${chapterId}`);
+                if (!chapterData || !chapterData.data) return;
+
+                currentChapter = chapterData.data;
+                currentMangaId = currentChapter.relationships.find(rel => rel.type === 'manga')?.id;
+
+                // Update chapter title
+                const chapterTitle = document.getElementById('chapterTitle');
+                chapterTitle.textContent = `Chapter ${currentChapter.attributes.chapter}: ${currentChapter.attributes.title || ''}`;
+
+                // Get chapter pages
+                const atHomeData = await fetchWithProxy(`${MANGADEX_API}/at-home/server/${chapterId}`);
+                if (!atHomeData || !atHomeData.baseUrl) return;
+
+                const baseUrl = atHomeData.baseUrl;
+                const pages = atHomeData.chapter.data;
+
+                // Display pages
+                pages.forEach(page => {
+                    const img = document.createElement('img');
+                    img.src = `${baseUrl}/data/${atHomeData.chapter.hash}/${page}`;
+                    img.loading = 'lazy';
+                    pageContainer.appendChild(img);
+                });
+
+                // Load chapter list for navigation
+                await loadChapterList();
+            } catch (error) {
+                console.error('Error loading chapter:', error);
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        async function loadChapterList() {
+            if (!currentMangaId) return;
+
+            try {
+                const chaptersData = await fetchWithProxy(
+                    `${MANGADEX_API}/manga/${currentMangaId}/feed?translatedLanguage[]=en&order[chapter]=asc`
+                );
+
+                if (chaptersData && chaptersData.data) {
+                    chapterList = chaptersData.data;
+                    updateNavigationButtons();
+                }
+            } catch (error) {
+                console.error('Error loading chapter list:', error);
+            }
+        }
+
+        function updateNavigationButtons() {
+            const prevButton = document.getElementById('prevChapter');
+            const nextButton = document.getElementById('nextChapter');
+
+            const currentIndex = chapterList.findIndex(chapter => chapter.id === currentChapter.id);
+            
+            prevButton.disabled = currentIndex <= 0;
+            nextButton.disabled = currentIndex === -1 || currentIndex === chapterList.length - 1;
+        }
+
+        function loadPreviousChapter() {
+            const currentIndex = chapterList.findIndex(chapter => chapter.id === currentChapter.id);
+            if (currentIndex > 0) {
+                const prevChapter = chapterList[currentIndex - 1];
+                window.location.href = `read.html?id=${prevChapter.id}`;
+            }
+        }
+
+        function loadNextChapter() {
+            const currentIndex = chapterList.findIndex(chapter => chapter.id === currentChapter.id);
+            if (currentIndex !== -1 && currentIndex < chapterList.length - 1) {
+                const nextChapter = chapterList[currentIndex + 1];
+                window.location.href = `read.html?id=${nextChapter.id}`;
+            }
+        }
+
+        // Load chapter when page loads
+
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const chapterId = urlParams.get('id');
+
+            if (!chapterId) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            // Set saved view mode or default to 'fit'
+            const container = document.getElementById('pageContainer');
+            container.classList.add('mode-webtoon');
+
+            loadChapter(chapterId);
+        });
+
+
+    </script>
+</body>
+</html>
